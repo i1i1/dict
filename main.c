@@ -73,7 +73,7 @@ main(void)
 				if (strcmp(k, "debug") == 0)
 					dict_print(&a);
 				else
-					printf("'%s' is '%s'\n", k, (char *)(dict_get(&a, k, strlen(k)).p));
+					printf("'%s' is '%s'\n", k, (char *)(dict_get(&a, k, strlen(k) + 1).p));
 				goto beg;
 			}
 

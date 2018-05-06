@@ -37,6 +37,7 @@ dict_init(dict *d, size_t (*hash)(void * const, size_t),
 	d->hash = hash == NULL ? djb2 : hash;
 	d->alloc = alloc;
 	d->vec = alloc ? d->alloc(NULL, sizeof(vector) * d->mod) : malloc(sizeof(vector) * d->mod);
+	d->iter_cnt = 0;
 
 	if (d->vec == NULL)
 		return DICT_MEM_ERR;
@@ -89,7 +90,7 @@ dict_get_ent(const dict *d, void * const key, size_t key_len)
 dict_obj
 dict_get(const dict *d, void * const key, size_t key_len)
 {
-	return dict_get_ent(d, key, key_len).key;
+	return dict_get_ent(d, key, key_len).val;
 }
 
 void
@@ -102,6 +103,7 @@ dict_remove(dict *d, void * const key, size_t key_len)
 	assert(d->vec);
 	assert(d->mod);
 	assert(d->hash);
+	assert(d->iter_cnt == 0);
 	assert(key);
 	assert(key_len);
 
@@ -129,6 +131,7 @@ dict_free(dict *d)
 	assert(d);
 	assert(d->vec);
 	assert(d->mod);
+	assert(d->iter_cnt == 0);
 
 	if (!d->alloc)
 		goto end;
@@ -156,12 +159,12 @@ dict_iterate(struct dict_iter *iter)
 {
 	dict_ent ent;
 	dict_ent *p;
-	
+
 	assert(iter);
 	assert(iter->d);
 	assert(iter->d->mod);
 	assert(iter->d->vec);
-	assert(iter->d->in_iter);
+	assert(iter->d->iter_cnt > 0);
 
 	ent.val.p = ent.key.p = NULL;
 	ent.val.len = ent.key.len = 0;
@@ -174,7 +177,7 @@ dict_iterate(struct dict_iter *iter)
 	}
 
 	if (iter->i >= iter->d->mod) {
-		iter->d->in_iter--;
+		iter->d->iter_cnt--;
 		iter->d = NULL;
 		return ent;
 	}
@@ -182,7 +185,7 @@ dict_iterate(struct dict_iter *iter)
 	p = (dict_ent *)vector_get(iter->d->vec + iter->i, iter->j);
 
 	assert(p);
-	
+
 	ent = *p;
 	iter->j++;
 
@@ -194,8 +197,8 @@ dict_iter_init(dict * const d, struct dict_iter *iter)
 {
 	assert(d);
 	assert(d->mod);
-	
-	d->in_iter++;
+
+	d->iter_cnt++;
 
 	iter->d = d;
 	iter->i = iter->j = 0;
@@ -213,6 +216,7 @@ dict_resize(dict *a)
 	assert(a->vec);
 	assert(a->mod);
 	assert(a->hash);
+	assert(a->iter_cnt == 0);
 
 	b.len = 0;
 	b.mod = prime_nearest(a->mod + 1);
@@ -263,6 +267,7 @@ dict_set(dict *d, void * const key, size_t key_len, void *val, size_t val_len)
 	assert(d->vec);
 	assert(d->mod);
 	assert(d->hash);
+	assert(d->iter_cnt == 0);
 	assert(key);
 	assert(key_len);
 
@@ -282,7 +287,7 @@ dict_set(dict *d, void * const key, size_t key_len, void *val, size_t val_len)
 			continue;
 		if (strncmp(vec[i].key.p, key, key_len) != 0)
 			continue;
-		
+
 		if (d->alloc) {
 			obj.val.p = d->alloc(NULL, val_len);
 			obj.val.len = val_len;

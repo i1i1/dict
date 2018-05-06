@@ -25,7 +25,7 @@ typedef struct {
 	size_t len; // Number of entries in dict
 	size_t mod; // Number of entries in vec
 	size_t maxdepth; // Maximum length of vectors in dict.vec
-	int in_iter; // Flag for iterations
+	size_t iter_cnt; // Number of unfinished iterators in dict
 	size_t (*hash)(void * const, size_t);
 	void *(*alloc)(void *, size_t);
 } dict;

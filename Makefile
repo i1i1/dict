@@ -5,8 +5,8 @@ OUT=test
 
 all: build
 
-build: 
-	$(CC) $(CFLAGS) -o $(OUT) *.c
+build:
+	$(CC) $(CFLAGS) -o $(OUT) *.c vector/vector.c
 
 debug: CFLAGS+=-DDEBUG_ON
 debug: build
