@@ -24,7 +24,6 @@ strip(char *s)
 
 	e++;
 
-//	printf("strlen %d, b = %d, mod = %d\n", strlen(s), b - s, e - b);
 	*++e = '\0';
 	memmove(s, b, e - b + 1);
 }
@@ -42,23 +41,18 @@ dgetchar()
 	return c;
 }
 
-size_t
-hash(void * const a, size_t len)
-{
-	(void) a, len;
-
-	return 0;
-}
-
 int
 main(void)
 {
 	char *c;
 	char k[100];
 	char v[100];
-	dict a;
+	dict *a;
 
-	dict_init(&a, hash, realloc);
+	a = dict_init(1);
+
+	if (!a)
+		exit(1);
 
 	for (;;) {
 	beg:
@@ -70,10 +64,7 @@ main(void)
 			if (*c++ == '\n') {
 				*--c = '\0';
 				strip(k);
-				if (strcmp(k, "debug") == 0)
-					dict_print(&a);
-				else
-					printf("'%s' is '%s'\n", k, (char *)(dict_get(&a, k, strlen(k) + 1).p));
+				printf("'%s' is '%s'\n", k, (char *)(dict_get(a, k)));
 				goto beg;
 			}
 
@@ -86,11 +77,12 @@ main(void)
 		strip(k);
 		strip(v);
 		printf("SETTING '%s' to '%s'\n", k, v);
-		dict_set(&a, k, strlen(k) + 1, v, strlen(v) + 1);
+		if (dict_set(a, k, v))
+			exit(1);
 	}
 
-	printf("len = %lu\n", a.len);
-	dict_free(&a);
+	printf("len = %lu\n", dict_len(a));
+	dict_free(a);
 
 	return 0;
 }

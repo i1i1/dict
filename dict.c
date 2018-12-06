@@ -9,114 +9,97 @@
 #include "primes.h"
 
 
-size_t
-djb2(void * const p, size_t len)
+#define STREQ(a, b)		(strcmp(a, b) == 0)
+
+
+static size_t
+hash(const char *s)
 {
-	unsigned long hash = 5381;
+	unsigned long h = 5381;
 	int c;
-	char *str = p;
 
-	while (len--) {
-		c = *str++;
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-	}
+	while ((c = *s++))
+		h = ((h << 5) + h) + c; /* h * 33 + c */
 
-	return hash;
+	return h;
 }
 
-int
-dict_init(dict *d, size_t (*hash)(void * const, size_t),
-		void *(*alloc)(void *, size_t))
+dict *
+dict_init(int copy_key)
 {
-	size_t i;
+	dict *d;
 
-	assert(d);
+	d = DICT_MALLOC(sizeof(*d));
+
+	if (!d)
+		return NULL;
 
 	d->len = 0;
 	d->mod = prime_nearest(0);
-	d->hash = hash == NULL ? djb2 : hash;
-	d->alloc = alloc;
-	d->vec = alloc ? d->alloc(NULL, sizeof(vector) * d->mod) : malloc(sizeof(vector) * d->mod);
-	d->iter_cnt = 0;
+//	d->maxdepth = 0;
+	d->vec = DICT_MALLOC(sizeof(*d->vec) * d->mod);
 
-	if (d->vec == NULL)
-		return DICT_MEM_ERR;
-
-	for (i = 0; i < d->mod; i++) {
-		if (vector_init(d->vec + i, sizeof(dict_ent), alloc) == VECTOR_MEM_ERR) {
-			while (i--)
-				vector_free(d->vec + i);
-
-			alloc ? d->alloc(d->vec, 0) : free(d->vec);
-
-			return DICT_MEM_ERR;
-		}
+	if (!d->vec) {
+		DICT_FREE(d);
+		return NULL;
 	}
 
-	return DICT_OK;
+	memset(d->vec, 0, sizeof(*d->vec) * d->mod);
+
+	return d;
 }
 
-dict_ent
-dict_get_ent(const dict *d, void * const key, size_t key_len)
+void *
+dict_get(const dict *d, const char *key)
 {
-	size_t n, i;
-	dict_ent *vec;
-	dict_ent null;
+	size_t i;
+	size_t h;
+	struct dict_ent *vec;
 
 	assert(d);
 	assert(d->vec);
-	assert(d->mod);
-	assert(d->hash);
 	assert(key);
-	assert(key_len);
 
-	n = d->hash(key, key_len) % d->mod;
-	vec = vector_data(d->vec + n);
+	h = hash(key);
+	vec = d->vec[h % d->mod];
 
-	assert(vec);
+	if (vec == NULL)
+		return NULL;
 
-	for (i = 0; i < vector_nmemb(d->vec + n); i++) {
-		if (vec[i].key.len == key_len &&
-				strncmp(vec[i].key.p, key, key_len) == 0)
-			return vec[i];
+	for (i = 0; i < vector_nmemb(vec); i++) {
+		if (h == vec[i].hkey && STREQ(vec[i].key, key))
+			return (void *)vec[i].val;
 	}
 
-	null.key.p = null.val.p = NULL;
-	null.key.len = null.val.len = 0;
-
-	return null;
+	return NULL;
 }
 
-dict_obj
-dict_get(const dict *d, void * const key, size_t key_len)
+static void
+vector_remove(struct dict_ent *v, size_t n)
 {
-	return dict_get_ent(d, key, key_len).val;
+	assert(v);
+	assert(n < vector_nmemb(v));
+
+	v[n] = vector_pop(v);
 }
 
 void
-dict_remove(dict *d, void * const key, size_t key_len)
+dict_remove(dict *d, const char *key)
 {
-	size_t n, i;
-	dict_ent *vec;
+	size_t h, i;
+	struct dict_ent *vec;
 
 	assert(d);
 	assert(d->vec);
-	assert(d->mod);
-	assert(d->hash);
-	assert(d->iter_cnt == 0);
 	assert(key);
-	assert(key_len);
 
-	n = d->hash(key, key_len) % d->mod;
-	vec = vector_data(d->vec + n);
+	h = hash(key);
+	vec = d->vec[h % d->mod];
 
-	assert(vec);
-
-	for (i = 0; i < vector_nmemb(d->vec + n); i++) {
-		if (vec[i].key.len == key_len &&
-				strncmp(vec[i].key.p, key, key_len) == 0) {
-
-			vector_remove(d->vec + n, i);
+	for (i = 0; i < vector_nmemb(vec); i++) {
+		if (vec[i].hkey == h && STREQ(vec[i].key, key)) {
+			vector_remove(vec, i);
+			d->len--;
 			return;
 		}
 	}
@@ -126,238 +109,112 @@ void
 dict_free(dict *d)
 {
 	size_t i, j;
-	dict_ent *vec;
+	struct dict_ent *vec;
 
 	assert(d);
 	assert(d->vec);
-	assert(d->mod);
-	assert(d->iter_cnt == 0);
-
-	if (!d->alloc)
-		goto end;
 
 	for (i = 0; i < d->mod; i++) {
-		vec = vector_data(d->vec + i);
+		vec = d->vec[i];
 
-		for (j = 0; j < vector_nmemb(d->vec); j++) {
-			d->alloc(vec[j].val.p, 0);
-			d->alloc(vec[j].key.p, 0);
+		for (j = 0; j < vector_nmemb(vec); j++) {
+			if (d->copy_key)
+				DICT_FREE((void *)vec[j].key);
 		}
 
-		vector_free(d->vec + i);
+		vector_free(d->vec[i]);
 	}
 
-end:
-	if (d->alloc)
-		d->alloc(d->vec, 0);
-	else
-		free(d->vec);
+	DICT_FREE(d->vec);
+	DICT_FREE(d);
 }
 
-dict_ent
-dict_iterate(struct dict_iter *iter)
+static int
+dict_forceadd(dict *d, struct dict_ent ent)
 {
-	dict_ent ent;
-	dict_ent *p;
+	struct dict_ent *vec;
+	int res;
 
-	assert(iter);
-	assert(iter->d);
-	assert(iter->d->mod);
-	assert(iter->d->vec);
-	assert(iter->d->iter_cnt > 0);
+	vec = d->vec[ent.hkey % d->mod];
 
-	ent.val.p = ent.key.p = NULL;
-	ent.val.len = ent.key.len = 0;
+	res = vector_push(vec, ent);
+	d->vec[ent.hkey % d->mod] = vec;
 
-	while (iter->i < iter->d->mod &&
-	    iter->j >= vector_nmemb(iter->d->vec + iter->i)) {
+	if (res)
+		return 1;
 
-		iter->i++;
-		iter->j = 0;
-	}
+	d->len++;
 
-	if (iter->i >= iter->d->mod) {
-		iter->d->iter_cnt--;
-		iter->d = NULL;
-		return ent;
-	}
-
-	p = (dict_ent *)vector_get(iter->d->vec + iter->i, iter->j);
-
-	assert(p);
-
-	ent = *p;
-	iter->j++;
-
-	return ent;
-}
-
-void
-dict_iter_init(dict * const d, struct dict_iter *iter)
-{
-	assert(d);
-	assert(d->mod);
-
-	d->iter_cnt++;
-
-	iter->d = d;
-	iter->i = iter->j = 0;
+	return 0;
 }
 
 int
 dict_resize(dict *a)
 {
 	dict b;
-	dict_ent o;
-	struct dict_iter iter;
-	size_t i;
+	struct dict_ent *vec;
+	size_t i, j;
 
 	assert(a);
 	assert(a->vec);
-	assert(a->mod);
-	assert(a->hash);
-	assert(a->iter_cnt == 0);
 
 	b.len = 0;
 	b.mod = prime_nearest(a->mod + 1);
-	b.hash = a->hash;
-	b.alloc = NULL;
-	b.vec = a->alloc(NULL, sizeof(vector) * b.mod);
+	b.vec = DICT_MALLOC(sizeof(*b.vec) * b.mod);
+	b.copy_key = a->copy_key;
 
-	if (b.vec == NULL)
-		return DICT_MEM_ERR;
-
-	for (i = 0; i < b.mod; i++) {
-		if (vector_init(b.vec + i, sizeof(dict_ent), a->alloc) != VECTOR_OK) {
-			while (i--)
-				vector_free(b.vec + i);
-
-			vector_free(b.vec);
-
-			return DICT_MEM_ERR;
+	for (i = 0; i < a->mod; i++) {
+		vec = a->vec[i];
+		for (j = 0; j < vector_nmemb(vec); j++) {
+			if (dict_forceadd(&b, vec[j]))
+				return 1;
 		}
 	}
 
-	dict_iter_init(a, &iter);
-
-	for (o = dict_iterate(&iter); o.key.p != NULL; o = dict_iterate(&iter)) {
-		if (dict_set(&b, o.key.p, o.key.len, o.val.p, o.val.len) != DICT_OK) {
-			dict_free(&b);
-			return DICT_MEM_ERR;
-		}
-	}
-
-	b.alloc = a->alloc;
-	a->alloc = NULL;
-
-	dict_free(a);
-
-	memcpy(a, &b, sizeof(b));
-
-	return DICT_OK;
+	return 0;
 }
 
 int
-dict_set(dict *d, void * const key, size_t key_len, void *val, size_t val_len)
+dict_set(dict *d, const char *key, const void *val)
 {
-	size_t n, i;
-	dict_ent *vec, obj;
+	size_t h, i;
+	struct dict_ent *vec;
 
 	assert(d);
 	assert(d->vec);
-	assert(d->mod);
-	assert(d->hash);
-	assert(d->iter_cnt == 0);
 	assert(key);
-	assert(key_len);
 
-	if (val == NULL) {
-		dict_remove(d, key, key_len);
+	h = hash(key);
+	vec = d->vec[h % d->mod];
 
-		return DICT_OK;
+	for (i = 0; i < vector_nmemb(vec); i++) {
+		if (h != vec[i].hkey || STREQ(vec[i].key, key))
+			continue;
+
+		vec[i].val = val;
+
+		return 0;
 	}
 
-	n = d->hash(key, key_len) % d->mod;
-	vec = vector_data(d->vec + n);
-
-	assert(vec);
-
-	for (i = 0; i < vector_nmemb(d->vec + n); i++) {
-		if (vec[i].key.len != key_len)
-			continue;
-		if (strncmp(vec[i].key.p, key, key_len) != 0)
-			continue;
-
-		if (d->alloc) {
-			obj.val.p = d->alloc(NULL, val_len);
-			obj.val.len = val_len;
-
-			if (obj.val.p == NULL)
-				return DICT_MEM_ERR;
-
-			d->alloc(vec[i].val.p, 0);
-			vec[i].val = obj.val;
-
-			memcpy(vec[i].val.p, val, val_len);
-		} else {
-			vec[i].val.p = val;
-			vec[i].val.len = val_len;
-		}
-
-		return DICT_OK;
+	if (d->len / d->mod > 4) {
+		if (dict_resize(d))
+			return 1;
 	}
 
 	/* Adding new element */
-	if (d->alloc == NULL) {
-		obj.key.p = key;
-		obj.key.len = key_len;
-		obj.val.p = val;
-		obj.val.len = val_len;
+	struct dict_ent ent;
+	const char *s;
 
-		if (vector_push(d->vec + n, &obj) != VECTOR_OK)
-			return DICT_MEM_ERR;
+	s = d->copy_key ? strdup(key) : key;
 
-		d->maxdepth = d->maxdepth > vector_nmemb(d->vec + n) ?
-			d->maxdepth : vector_nmemb(d->vec + n);
-		d->len++;
+	if (!s)
+		return 1;
 
-		return DICT_OK;
-	}
+	ent.key = s;
+	ent.hkey = h;
+	ent.val = val;
 
-	obj.key.p = d->alloc(NULL, key_len);
-	obj.key.len = key_len;
-
-	if (obj.key.p == NULL)
-		return DICT_MEM_ERR;
-
-	obj.val.p = d->alloc(NULL, val_len);
-	obj.val.len = val_len;
-
-	if (obj.val.p == NULL) {
-		d->alloc(obj.key.p, 0);
-		return DICT_MEM_ERR;
-	}
-
-	if (vector_push(d->vec + n, &obj) != VECTOR_OK) {
-		d->alloc(obj.key.p, 0);
-		d->alloc(obj.val.p, 0);
-		return DICT_MEM_ERR;
-	}
-
-	memcpy(obj.key.p, key, key_len);
-	memcpy(obj.val.p, val, val_len);
-
-	d->len++;
-
-	d->maxdepth = d->maxdepth > vector_nmemb(d->vec + n) ?
-		d->maxdepth : vector_nmemb(d->vec + n);
-
-	if ((float)d->len / (float)d->mod > 2.0) {
-		dict_resize(d);
-		return DICT_OK;
-	}
-
-	return DICT_OK;
+	return dict_forceadd(d, ent);
 }
 
 size_t
@@ -366,37 +223,5 @@ dict_len(dict *d)
 	assert(d);
 
 	return d->len;
-}
-
-void
-dict_print(dict *d)
-{
-	size_t i, j;
-	dict_ent *vec;
-
-	assert(d);
-	assert(d->vec);
-	assert(d->mod);
-
-	printf("\nFANCY PRINT:\n\n");
-
-	for (i = 0; i < d->mod; i++) {
-		if (vector_nmemb(d->vec + i) == 0)
-			continue;
-
-		vec = vector_data(d->vec + i);
-
-		printf("arr[%lu] = {\n", i);
-
-		for (j = 0; j < vector_nmemb(d->vec + i); j++) {
-			printf("\t'%s' : '%s'\n",
-					(char *)vec[j].key.p,
-					(char *)vec[j].val.p);
-		}
-		printf("}\n\n");
-	}
-
-	printf("TOTAL: %lu\n", d->len);
-	printf("MODULUS: %lu\n", d->mod);
 }
 
