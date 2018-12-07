@@ -1,88 +1,105 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "dict.h"
+#include "vector/vector.h"
+
+#define BUFSIZE	256
 
 
 void
-strip(char *s)
+error(char *msg)
 {
-	char *b, *e;
-
-	b = s;
-
-	while (*b == ' ' || *b == '\t')
-		if (*b++ == '\0') {
-			s[0] = '\0';
-			return;
-		}
-
-	e = s + strlen(s) - 1;
-
-	while (*e-- == ' ');
-
-	e++;
-
-	*++e = '\0';
-	memmove(s, b, e - b + 1);
-}
-
-char
-dgetchar()
-{
-	int c;
-
-	c = getchar();
-
-	if (c == EOF)
-		exit(0);
-
-	return c;
+	puts(msg);
+	exit(1);
 }
 
 int
-main(void)
+dict_add(dict *d, char *w)
 {
-	char *c;
-	char k[100];
-	char v[100];
-	dict *a;
+	dict_get(d, w);
 
-	a = dict_init(1);
+	if (dict_get(d, w))
+		return dict_set(d, w, (void *)((size_t)dict_get(d, w) + 1));
+	else
+		return dict_set(d, w, (void *)0x1);
+}
 
-	if (!a)
-		exit(1);
+int
+freq_cmp(const struct dict_ent *a, const struct dict_ent *b)
+{
+	return (size_t)a->val - (size_t)b->val;
+}
 
-	for (;;) {
-	beg:
-		printf(">> ");
+struct dict_ent *
+get_freqs(dict *d)
+{
+	dict_iter *it;
+	struct dict_ent *e, *res;
 
-		c = k;
+	if (!(it = dict_iter_init(d)))
+		error("No memory");
 
-		while ((*c = dgetchar()) != '=')
-			if (*c++ == '\n') {
-				*--c = '\0';
-				strip(k);
-				printf("'%s' is '%s'\n", k, (char *)(dict_get(a, k)));
-				goto beg;
-			}
+	res = NULL;
 
-		*c = '\0';
-
-		c = v;
-		while ((*c++ = dgetchar()) != '\n');
-		*--c = '\0';
-
-		strip(k);
-		strip(v);
-		printf("SETTING '%s' to '%s'\n", k, v);
-		if (dict_set(a, k, v))
-			exit(1);
+	while ((e = dict_iterate(it))) {
+		if (vector_push(res, *e))
+			error("No memory");
 	}
 
-	printf("len = %lu\n", dict_len(a));
-	dict_free(a);
+	dict_iter_free(it);
+
+	return res;
+}
+
+int
+main(int argc, char **argv)
+{
+	dict *d;
+	FILE *fp;
+	size_t i;
+
+	if (!(d = dict_init(1)))
+		error("No memory");
+
+	if (argc <= 1)
+		error("No arguments");
+
+	for (i = 1; i < (unsigned)argc; i++) {
+		char a[BUFSIZE];
+		int c, j;
+
+		if (!(fp = fopen(argv[i], "r")))
+			error("Can't open file");
+
+		j = 0;
+		while ((c = getc(fp)) != EOF) {
+			if (!isalnum(c) && c != '-') {
+				if (j > 0) {
+					a[j] = '\0';
+					j = 0;
+					if (dict_add(d, a))
+						error("No memmory!");
+				}
+				continue;
+			}
+			a[j++] = tolower(c);
+		}
+		if (fp != stdin)
+			fclose(fp);
+	}
+
+	struct dict_ent *farr;
+
+	farr = get_freqs(d);
+	qsort(farr, vector_nmemb(farr), sizeof(*farr), (void *)freq_cmp);
+
+	for (i = 0; i < vector_nmemb(farr); i++)
+			printf("'%s' -> %ld\n", farr[i].key, (size_t)farr[i].val);
+
+	dict_free(d);
 
 	return 0;
 }

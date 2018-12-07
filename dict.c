@@ -36,7 +36,8 @@ dict_init(int copy_key)
 
 	d->len = 0;
 	d->mod = prime_nearest(0);
-//	d->maxdepth = 0;
+	d->copy_key = copy_key;
+	d->iter_cnt = 0;
 	d->vec = DICT_MALLOC(sizeof(*d->vec) * d->mod);
 
 	if (!d->vec) {
@@ -132,15 +133,7 @@ dict_free(dict *d)
 static int
 dict_forceadd(dict *d, struct dict_ent ent)
 {
-	struct dict_ent *vec;
-	int res;
-
-	vec = d->vec[ent.hkey % d->mod];
-
-	res = vector_push(vec, ent);
-	d->vec[ent.hkey % d->mod] = vec;
-
-	if (res)
+	if (vector_push(d->vec[ent.hkey % d->mod], ent))
 		return 1;
 
 	d->len++;
@@ -163,13 +156,23 @@ dict_resize(dict *a)
 	b.vec = DICT_MALLOC(sizeof(*b.vec) * b.mod);
 	b.copy_key = a->copy_key;
 
+
+	if (!b.vec)
+		return 1;
+
+	memset(b.vec, 0, sizeof(*b.vec) * b.mod);
+
 	for (i = 0; i < a->mod; i++) {
 		vec = a->vec[i];
 		for (j = 0; j < vector_nmemb(vec); j++) {
 			if (dict_forceadd(&b, vec[j]))
 				return 1;
 		}
+		vector_free(a->vec[i]);
 	}
+
+	DICT_FREE(a->vec);
+	*a = b;
 
 	return 0;
 }
@@ -188,7 +191,7 @@ dict_set(dict *d, const char *key, const void *val)
 	vec = d->vec[h % d->mod];
 
 	for (i = 0; i < vector_nmemb(vec); i++) {
-		if (h != vec[i].hkey || STREQ(vec[i].key, key))
+		if (h != vec[i].hkey || !STREQ(vec[i].key, key))
 			continue;
 
 		vec[i].val = val;
@@ -203,12 +206,20 @@ dict_set(dict *d, const char *key, const void *val)
 
 	/* Adding new element */
 	struct dict_ent ent;
-	const char *s;
+	char *s;
 
-	s = d->copy_key ? strdup(key) : key;
+	if (d->copy_key) {
+		int l;
 
-	if (!s)
-		return 1;
+		l = strlen(key) + 1;
+
+		if (!(s = DICT_MALLOC(l)))
+			return 1;
+
+		memcpy(s, key, l);
+
+	} else
+		s = (char *)key;
 
 	ent.key = s;
 	ent.hkey = h;
@@ -223,5 +234,68 @@ dict_len(dict *d)
 	assert(d);
 
 	return d->len;
+}
+
+dict_iter *
+dict_iter_init(dict *d)
+{
+	dict_iter *it;
+
+	assert(d);
+
+	it = DICT_MALLOC(sizeof(*it));
+
+	if (!it)
+		return NULL;
+
+	it->d = d;
+	it->i = 0;
+	it->j = 0;
+	d->iter_cnt++;
+
+	return it;
+}
+
+struct dict_ent *
+dict_iterate(dict_iter *it)
+{
+	struct dict_ent *vec;
+	size_t i;
+
+	assert(it);
+	assert(it->d);
+	assert(it->d->vec);
+
+	if (it->i >= it->d->mod)
+		return NULL;
+
+	vec = it->d->vec[it->i];
+
+	if (it->j < vector_nmemb(vec))
+		return vec + it->j++;
+
+	for (i = it->i + 1; i < it->d->mod; i++) {
+		if (vector_nmemb(it->d->vec[i])) {
+			it->i = i;
+			it->j = 1;
+			return it->d->vec[i];
+		}
+	}
+
+	return NULL;
+}
+
+void
+dict_iter_free(dict_iter *it)
+{
+	dict *d;
+
+	assert(it);
+	assert(it->d);
+
+	d = (dict *)it->d;
+	d->iter_cnt--;
+
+	DICT_FREE(it);
 }
 
