@@ -1,25 +1,22 @@
 CC=gcc
-CFLAGS=-Wall -g -Wextra
-RM=rm -rf
-OUT=test
+CFLAGS=-Wall -Wextra -pedantic -g
+OUT=prog
 SAMPLES=$(wildcard samples/*)
+SRC=$(wildcard *.c)
+OBJS=$(SRC:.c=.o)
 
-all: build
 
-build: vector/vector.o
-	$(CC) $(CFLAGS) -o $(OUT) *.c vector/vector.o
+$(OUT): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
-vector/vector.o:
-	make -C vector
+%.o: %.c
+	$(CC) $(CFLAGS) -o $@ -c $<
 
-test: all
+test: $(OUT)
 	./$(OUT) $(SAMPLES)
 
-debug: CFLAGS+=-DDEBUG_ON
-debug: build
-
 clean:
-	$(RM) *.o $(OUT)
+	rm $(OBJS) $(OUT)
 
-.PHONY: debug build clean all
+.PHONY: clean test
 

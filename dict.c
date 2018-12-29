@@ -4,8 +4,10 @@
 #include <string.h>
 #include <assert.h>
 
-#include "dict.h"
+#define VECTOR_IMPLEMENTATION
 #include "vector/vector.h"
+
+#include "dict.h"
 #include "primes.h"
 
 
