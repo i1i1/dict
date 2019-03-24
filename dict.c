@@ -184,6 +184,8 @@ dict_set(dict *d, const char *key, const void *val)
 {
 	size_t h, i;
 	struct dict_ent *vec;
+	struct dict_ent ent;
+	char *s;
 
 	assert(d);
 	assert(d->vec);
@@ -207,8 +209,6 @@ dict_set(dict *d, const char *key, const void *val)
 	}
 
 	/* Adding new element */
-	struct dict_ent ent;
-	char *s;
 
 	if (d->copy_key) {
 		int l;

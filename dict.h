@@ -17,9 +17,9 @@ struct dict_ent {
 
 typedef struct {
 	struct dict_ent **vec;
-	size_t len; // Number of entries in dict
-	size_t mod; // Number of entries in vec
-//	size_t maxdepth; // Maximum length of vectors in dict.vec
+	size_t len; /* Number of entries in dict */
+	size_t mod; /* Number of entries in vec */
+/*	size_t maxdepth; Maximum length of vectors in dict.vec */
 	int copy_key;
 	int iter_cnt;
 

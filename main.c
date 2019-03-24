@@ -28,8 +28,11 @@ dict_add(dict *d, char *w)
 }
 
 int
-freq_cmp(const struct dict_ent *a, const struct dict_ent *b)
+freq_cmp(const void *aa, const void *bb)
 {
+    const struct dict_ent *a = aa;
+    const struct dict_ent *b = bb;
+
 	return (size_t)a->val - (size_t)b->val;
 }
 
@@ -60,6 +63,7 @@ main(int argc, char **argv)
 	dict *d;
 	FILE *fp;
 	size_t i;
+	struct dict_ent *farr;
 
 	if (!(d = dict_init(1)))
 		error("No memory");
@@ -91,10 +95,8 @@ main(int argc, char **argv)
 			fclose(fp);
 	}
 
-	struct dict_ent *farr;
-
 	farr = get_freqs(d);
-	qsort(farr, vector_nmemb(farr), sizeof(*farr), (void *)freq_cmp);
+	qsort(farr, vector_nmemb(farr), sizeof(*farr), freq_cmp);
 
 	for (i = 0; i < vector_nmemb(farr); i++)
 			printf("'%s' -> %ld\n", farr[i].key, (size_t)farr[i].val);
