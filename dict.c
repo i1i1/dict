@@ -69,7 +69,7 @@ dict_get(const dict *d, const char *key)
 	if (vec == NULL)
 		return NULL;
 
-	for (i = 0; i < vector_nmemb(vec); i++) {
+	for (i = 0; i < vector_nmemb(&vec); i++) {
 		if (h == vec[i].hkey && STREQ(vec[i].key, key))
 			return (void *)vec[i].val;
 	}
@@ -81,9 +81,9 @@ static void
 vector_remove(struct dict_ent *v, size_t n)
 {
 	assert(v);
-	assert(n < vector_nmemb(v));
+	assert(n < vector_nmemb(&v));
 
-	v[n] = vector_pop(v);
+	v[n] = vector_pop(&v);
 }
 
 void
@@ -99,7 +99,7 @@ dict_remove(dict *d, const char *key)
 	h = hash(key);
 	vec = d->vec[h % d->mod];
 
-	for (i = 0; i < vector_nmemb(vec); i++) {
+	for (i = 0; i < vector_nmemb(&vec); i++) {
 		if (vec[i].hkey == h && STREQ(vec[i].key, key)) {
 			vector_remove(vec, i);
 			d->len--;
@@ -120,12 +120,12 @@ dict_free(dict *d)
 	for (i = 0; i < d->mod; i++) {
 		vec = d->vec[i];
 
-		for (j = 0; j < vector_nmemb(vec); j++) {
+		for (j = 0; j < vector_nmemb(&vec); j++) {
 			if (d->copy_key)
 				DICT_FREE((void *)vec[j].key);
 		}
 
-		vector_free(d->vec[i]);
+		vector_free(d->vec + i);
 	}
 
 	DICT_FREE(d->vec);
@@ -135,7 +135,7 @@ dict_free(dict *d)
 static int
 dict_forceadd(dict *d, struct dict_ent ent)
 {
-	if (vector_push(d->vec[ent.hkey % d->mod], ent))
+	if (vector_push(&(d->vec[ent.hkey % d->mod]), ent))
 		return 1;
 
 	d->len++;
@@ -166,11 +166,11 @@ dict_resize(dict *a)
 
 	for (i = 0; i < a->mod; i++) {
 		vec = a->vec[i];
-		for (j = 0; j < vector_nmemb(vec); j++) {
+		for (j = 0; j < vector_nmemb(&vec); j++) {
 			if (dict_forceadd(&b, vec[j]))
 				return 1;
 		}
-		vector_free(a->vec[i]);
+		vector_free(a->vec + i);
 	}
 
 	DICT_FREE(a->vec);
@@ -194,7 +194,7 @@ dict_set(dict *d, const char *key, const void *val)
 	h = hash(key);
 	vec = d->vec[h % d->mod];
 
-	for (i = 0; i < vector_nmemb(vec); i++) {
+	for (i = 0; i < vector_nmemb(&vec); i++) {
 		if (h != vec[i].hkey || !STREQ(vec[i].key, key))
 			continue;
 
@@ -273,11 +273,11 @@ dict_iterate(dict_iter *it)
 
 	vec = it->d->vec[it->i];
 
-	if (it->j < vector_nmemb(vec))
+	if (it->j < vector_nmemb(&vec))
 		return vec + it->j++;
 
 	for (i = it->i + 1; i < it->d->mod; i++) {
-		if (vector_nmemb(it->d->vec[i])) {
+		if (vector_nmemb(it->d->vec + i)) {
 			it->i = i;
 			it->j = 1;
 			return it->d->vec[i];

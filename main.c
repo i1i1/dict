@@ -48,7 +48,7 @@ get_freqs(dict *d)
 	res = NULL;
 
 	while ((e = dict_iterate(it))) {
-		if (vector_push(res, *e))
+		if (vector_push(&res, *e))
 			error("No memory");
 	}
 
@@ -96,10 +96,10 @@ main(int argc, char **argv)
 	}
 
 	farr = get_freqs(d);
-	qsort(farr, vector_nmemb(farr), sizeof(*farr), freq_cmp);
+	qsort(farr, vector_nmemb(&farr), sizeof(*farr), freq_cmp);
 
-	for (i = 0; i < vector_nmemb(farr); i++)
-			printf("'%s' -> %ld\n", farr[i].key, (size_t)farr[i].val);
+	for (i = 0; i < vector_nmemb(&farr); i++)
+		printf("%10ld\t'%s'\n", (size_t)farr[i].val, farr[i].key);
 
 	dict_free(d);
 

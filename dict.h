@@ -3,7 +3,10 @@
 
 #include <stdlib.h>
 
-#define DICT_REALLOC(ptr, size)	(realloc(ptr, size))
+#include "vector/vector.h"
+
+
+#define DICT_REALLOC(ptr, size)		(realloc(ptr, size))
 #define DICT_FREE(ptr)			(free(ptr))
 #define DICT_MALLOC(size)		(malloc(size))
 
@@ -16,7 +19,7 @@ struct dict_ent {
 };
 
 typedef struct {
-	struct dict_ent **vec;
+	vector_of(struct dict_ent) *vec;
 	size_t len; /* Number of entries in dict */
 	size_t mod; /* Number of entries in vec */
 /*	size_t maxdepth; Maximum length of vectors in dict.vec */
